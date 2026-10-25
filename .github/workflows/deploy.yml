@@ -1,44 +1,45 @@
-name: Deploy portfolio frontend
+name: Deploy portfolio to VPS
 
 on:
   push:
     branches: [main]
     paths:
-      - 'frontend/**'
-      - '.github/workflows/deploy.yml'
+      - "frontend/**"
+      - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: portfolio-vps-deploy
   cancel-in-progress: true
 
 jobs:
-  build:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+  deploy:
+    # Register a GitHub Actions runner inside your VPC with the label "vpc".
+    runs-on: [self-hosted, linux, x64, vpc]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/setup-node@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install dependencies
-        run: npm ci
+
+      - name: Build frontend
         working-directory: frontend
-      - name: Build
-        run: npm run build
-        working-directory: frontend
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: frontend/dist
-      - id: deployment
-        uses: actions/deploy-pages@v4
+        run: |
+          npm ci
+          npm run build
+
+      - name: Upload site to Nginx document root
+        env:
+          VPS_DEPLOY_PATH: ${{ vars.VPS_DEPLOY_PATH }}
+        run: |
+          test -n "$VPS_DEPLOY_PATH"
+          mkdir -p "$VPS_DEPLOY_PATH"
+          rsync -az --delete frontend/dist/ "$VPS_DEPLOY_PATH/"
